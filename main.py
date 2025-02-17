@@ -1,47 +1,75 @@
-import os 
-from dotenv import load_dotenv
-from groq import Groq 
+import os
 import base64
+from dotenv import load_dotenv
+from groq import Groq
 
-
+# Cargar variables de entorno
 load_dotenv()
 key = os.getenv('grok_key')
 
+# Inicializar cliente
+client = Groq(api_key=key)
 
-image_path = 'car.jpg'
-with open(image_path,'rb') as image_file:
-    byte_image = image_file.read()
-    encoded_image = base64.b64encode(byte_image).decode('utf-8')
+# Estado del chat
+chat_history = []
 
+def encode_image(image_path):
+    """Convierte una imagen a formato base64."""
+    try:
+        with open(image_path, 'rb') as image_file:
+            byte_image = image_file.read()
+            return base64.b64encode(byte_image).decode('utf-8')
+    except FileNotFoundError:
+        print("Error: No se encontró la imagen.")
+        return None
 
+def send_message():
+    """Envía el historial del chat al modelo y obtiene la respuesta."""
+    completion = client.chat.completions.create(
+        model="llama-3.2-11b-vision-preview",
+        messages=chat_history,
+        temperature=1,
+        max_tokens=1024,
+        top_p=1,
+        stream=False,
+        stop=None,
+    )
+    
+    response = completion.choices[0].message
+    chat_history.append(response)
+    print("\n🤖 Respuesta:", response.content, "\n")
 
-client = Groq(api_key = key )
-
-completion = client.chat.completions.create(
-    model="llama-3.2-11b-vision-preview",
-    messages=[
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "What is in the image?",
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{encoded_image}"  # Use Data URL format
-                    }
-                }
-            ]
-        }
-    ],
-    temperature=1,
-    max_tokens=1024,
-    top_p=1,
-    stream=False,
-    stop=None,
-)
-
-# Print the response message
-print(completion.choices[0].message)
+def main():
+    print("\n💬 Chat OCR con IA (Escribe 'adjuntar <imagen.jpg>', 'reset' o 'salir')\n")
+    
+    while True:
+        user_input = input("👤 Tú: ")
+        
+        if user_input.lower() == "salir":
+            print("👋 Saliendo del chat...")
+            break
+        
+        elif user_input.lower() == "reset":
+            global chat_history
+            chat_history = []
+            print("🔄 Chat reseteado.")
+        
+        elif user_input.startswith("adjuntar "):
+            image_path = user_input.split(" ", 1)[1]
+            encoded_image = encode_image(image_path)
+            if encoded_image:
+                image_text = input("👤 Añade un mensaje a tu imagen: ")
+                if image_text.strip():
+                    chat_history.append({"role": "user", "content": [
+                        {"type": "text", "text": image_text},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}}
+                    ]})
+                    send_message()
+                
+        
+        else:
+            chat_history.append({"role": "user", "content": [{"type": "text", "text": user_input}]})
+            send_message()
+            
+if __name__ == "__main__":
+    main()
